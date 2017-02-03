@@ -7,7 +7,7 @@
     "magento/framework": "100.1.*",
     "diglin/innocard_magento2": "2.*"
   },
-  "version": "1.0.0",
+  "version": "1.0.1",
   "license": "OSL-3.0",
   "authors": [
     {
