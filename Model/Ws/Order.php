@@ -10,17 +10,18 @@
 
 namespace Diglin\InnopayWs\Model\Ws;
 
-use Lyra\Innopay\Helper\Data;
-use Lyra\Innopay\Helper\Payment;
-use Lyra\Innopay\Model\Api\InnopayApi;
-use Lyra\Innopay\Model\Api\Ws\cancelPayment;
-use Lyra\Innopay\Model\Api\Ws\commonRequest;
-use Lyra\Innopay\Model\Api\Ws\duplicatePayment;
-use Lyra\Innopay\Model\Api\Ws\getPaymentDetails;
-use Lyra\Innopay\Model\Api\Ws\orderRequest;
-use Lyra\Innopay\Model\Api\Ws\paymentRequest;
-use Lyra\Innopay\Model\Api\Ws\queryRequest;
-use Lyra\Innopay\Model\Api\Ws\wsApi;
+use Lyranetwork\Innopay\Helper\Data;
+use Lyranetwork\Innopay\Helper\Payment;
+use Lyranetwork\Innopay\Model\Api\InnopayApi;
+use Lyranetwork\Innopay\Model\Api\Ws\CancelPayment;
+use Lyranetwork\Innopay\Model\Api\Ws\CommonRequest;
+use Lyranetwork\Innopay\Model\Api\Ws\DuplicatePayment;
+use Lyranetwork\Innopay\Model\Api\Ws\GetPaymentDetails;
+use Lyranetwork\Innopay\Model\Api\Ws\OrderRequest;
+use Lyranetwork\Innopay\Model\Api\Ws\PaymentRequest;
+use Lyranetwork\Innopay\Model\Api\Ws\QueryRequest;
+use Lyranetwork\Innopay\Model\Api\Ws\ResultException;
+use Lyranetwork\Innopay\Model\Api\Ws\WsApi;
 
 use Magento\Sales\Model\Order as MagentoOrder;
 
@@ -61,7 +62,7 @@ class Order
             $keyTest = $this->lyraHelperData->getCommonConfigData('key_test', $storeId);
             $keyProd = $this->lyraHelperData->getCommonConfigData('key_prod', $storeId);
 
-            $this->wsApi = new wsApi(['sni.enabled' => null]);
+            $this->wsApi = new WsApi(['sni.enabled' => null]);
             $this->wsApi->init($shopId, $mode, $keyTest, $keyProd);
         }
 
@@ -71,7 +72,7 @@ class Order
     /**
      * @param MagentoOrder $order
      * @param array $expectedStatuses
-     * @return \Lyra\Innopay\Model\Api\Ws\getPaymentDetailsResult
+     * @return \Lyranetwork\Innopay\Model\Api\Ws\getPaymentDetailsResult
      */
     public function getPaymentDetails(MagentoOrder $order, $expectedStatuses = array())
     {
@@ -81,10 +82,10 @@ class Order
         $payment = $order->getPayment();
         $uuid = $payment->getAdditionalInformation(Payment::TRANS_UUID);
 
-        $queryRequest = new queryRequest();
+        $queryRequest = new QueryRequest();
         $queryRequest->setUuid($uuid);
 
-        $getPaymentDetails = new getPaymentDetails();
+        $getPaymentDetails = new GetPaymentDetails();
         $getPaymentDetails->setQueryRequest($queryRequest);
 
         $this->wsApi->setHeaders();
@@ -101,7 +102,7 @@ class Order
     /**
      * @param MagentoOrder $order
      * @param null $cancelMessage
-     * @return \Lyra\Innopay\Model\Api\Ws\cancelPaymentResponse
+     * @return \Lyranetwork\Innopay\Model\Api\Ws\cancelPaymentResponse
      */
     public function cancelTransaction(MagentoOrder $order, $cancelMessage = null)
     {
@@ -112,15 +113,15 @@ class Order
 
         $uuid = $payment->getAdditionalInformation(Payment::TRANS_UUID);
 
-        $queryRequest = new queryRequest();
+        $queryRequest = new QueryRequest();
         $queryRequest->setUuid($uuid);
 
-        $commonRequest = new commonRequest();
+        $commonRequest = new CommonRequest();
         if ($cancelMessage) {
             $commonRequest->setComment($cancelMessage);
         }
 
-        $cancelPayment = new cancelPayment();
+        $cancelPayment = new CancelPayment();
         $cancelPayment->setCommonRequest($commonRequest);
         $cancelPayment->setQueryRequest($queryRequest);
 
@@ -144,7 +145,7 @@ class Order
 
     /**
      * @param MagentoOrder $order
-     * @return \Lyra\Innopay\Model\Api\Ws\duplicatePaymentResult
+     * @return \Lyranetwork\Innopay\Model\Api\Ws\duplicatePaymentResult
      * @throws \Exception
      */
     public function duplicateTransaction(MagentoOrder $order, $amountInCents)
@@ -155,7 +156,7 @@ class Order
         $incrementId = $order->getIncrementId();
         $currency = InnopayApi::findCurrencyByAlphaCode($order->getOrderCurrencyCode());
 
-        /* @var $paymentMethodInstance \Lyra\Innopay\Model\Method\Innopay */
+        /* @var $paymentMethodInstance \Lyranetwork\Innopay\Model\Method\Innopay */
         $paymentMethodInstance = $payment->getMethodInstance();
 
         // Get sub-module payment specific param
@@ -177,12 +178,12 @@ class Order
 
         $uuid = $payment->getAdditionalInformation(Payment::TRANS_UUID);
 
-        $queryRequest = new queryRequest();
+        $queryRequest = new QueryRequest();
         $queryRequest->setUuid($uuid);
 
-        $commonRequest = new commonRequest();
+        $commonRequest = new CommonRequest();
 
-        $paymentRequest = new paymentRequest();
+        $paymentRequest = new PaymentRequest();
         $paymentRequest->setTransactionId(InnopayApi::generateTransId($timestamp));
         $paymentRequest->setAmount($amountInCents);
         $paymentRequest->setCurrency($currency->getNum());
@@ -195,10 +196,10 @@ class Order
             $paymentRequest->setManualValidation($validationMode);
         }
 
-        $orderRequest = new orderRequest();
+        $orderRequest = new OrderRequest();
         $orderRequest->setOrderId($incrementId);
 
-        $duplicatePayment = new duplicatePayment();
+        $duplicatePayment = new DuplicatePayment();
         $duplicatePayment->setCommonRequest($commonRequest);
         $duplicatePayment->setPaymentRequest($paymentRequest);
         $duplicatePayment->setOrderRequest($orderRequest);
@@ -221,10 +222,16 @@ class Order
         $getDuplicateCommonResponse = $getDuplicatePaymentResult->getCommonResponse();
 
         $this->wsApi->checkAuthenticity();
-        $this->wsApi->checkResult(
-            $getDuplicateCommonResponse,
-            ['INITIAL', 'NOT_CREATED', 'AUTHORISED', 'AUTHORISED_TO_VALIDATE', 'WAITING_AUTHORISATION', 'WAITING_AUTHORISATION_TO_VALIDATE', 'REFUSED']
-        );
+
+        try {
+            $this->wsApi->checkResult(
+                $getDuplicateCommonResponse,
+                // Let REFUSED commented, we want to trigger an Exception if the transaction is refused on Innopay side to block any further transaction
+                ['INITIAL', 'NOT_CREATED', 'AUTHORISED', 'AUTHORISED_TO_VALIDATE', 'WAITING_AUTHORISATION', 'WAITING_AUTHORISATION_TO_VALIDATE' /*, 'REFUSED'*/]
+            );
+        } catch (ResultException $e) {
+            throw new \Exception('The transaction on Innopay has been refused or the transaction status is not expected');
+        }
 
         // check operation type (0: debit, 1 refund)
         $transType = $getDuplicatePaymentResponse->getOperationType();
